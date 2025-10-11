@@ -8,89 +8,97 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Kerala-inspired color palette */
+    --background: 45 20% 96%;
+    --foreground: 95 45% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 95 45% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 95 45% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Kerala green - deep forest */
+    --primary: 95 50% 25%;
+    --primary-foreground: 45 100% 98%;
+    --primary-glow: 95 45% 40%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Golden accents */
+    --secondary: 45 85% 55%;
+    --secondary-foreground: 95 50% 15%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 45 15% 92%;
+    --muted-foreground: 95 20% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Warm accent */
+    --accent: 25 80% 55%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 95 20% 85%;
+    --input: 95 15% 90%;
+    --ring: 95 50% 30%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Game-specific colors */
+    --game-canvas: 0 0% 100%;
+    --game-toolbar: 95 45% 20%;
+    --game-active: 25 90% 60%;
+    
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(95 50% 25%), hsl(95 45% 40%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(45 30% 97%));
+    --gradient-accent: linear-gradient(135deg, hsl(45 85% 55%), hsl(25 80% 55%));
+    
+    /* Shadows */
+    --shadow-game: 0 8px 24px -4px hsl(95 50% 25% / 0.15);
+    --shadow-float: 0 12px 40px -8px hsl(95 45% 30% / 0.2);
+    
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 95 35% 12%;
+    --foreground: 45 30% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 95 30% 15%;
+    --card-foreground: 45 30% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 95 30% 15%;
+    --popover-foreground: 45 30% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 95 45% 55%;
+    --primary-foreground: 95 50% 10%;
+    --primary-glow: 95 50% 40%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 45 75% 60%;
+    --secondary-foreground: 95 40% 15%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 95 25% 20%;
+    --muted-foreground: 45 15% 65%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 25 70% 55%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 95 25% 25%;
+    --input: 95 25% 20%;
+    --ring: 95 45% 60%;
+    
+    --game-canvas: 95 25% 18%;
+    --game-toolbar: 95 30% 15%;
+    --game-active: 25 80% 60%;
+    
+    --gradient-hero: linear-gradient(135deg, hsl(95 40% 20%), hsl(95 45% 35%));
+    --gradient-card: linear-gradient(180deg, hsl(95 30% 15%), hsl(95 25% 18%));
+    --gradient-accent: linear-gradient(135deg, hsl(45 75% 55%), hsl(25 70% 50%));
   }
 }
 
@@ -101,5 +109,49 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+  
+  .gradient-card {
+    background: var(--gradient-card);
+  }
+  
+  .gradient-accent {
+    background: var(--gradient-accent);
+  }
+  
+  .shadow-game {
+    box-shadow: var(--shadow-game);
+  }
+  
+  .shadow-float {
+    box-shadow: var(--shadow-float);
+  }
+  
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+  
+  .transition-bounce {
+    transition: var(--transition-bounce);
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 }
