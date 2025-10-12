@@ -8,6 +8,7 @@ import { ArrowLeft, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { categories } from "@/data/keralaDict";
 import { getDeviceLocation } from "@/utils/haversine";
+import { createRoom as apiCreateRoom } from "@/utils/websocket";
 
 const CreateRoom = () => {
   const navigate = useNavigate();
@@ -28,17 +29,58 @@ const CreateRoom = () => {
     setLoading(true);
     try {
       const location = await getDeviceLocation();
-      
-      // TODO: API call to create room
-      const roomId = `room-${Date.now()}`;
-      const sessionToken = `token-${Date.now()}`;
-      
-      sessionStorage.setItem("sessionToken", sessionToken);
-      sessionStorage.setItem("username", username);
-      sessionStorage.setItem("roomId", roomId);
-      
-      toast.success("Room created successfully!");
-      navigate(`/waiting-room/${roomId}`);
+      try {
+        const res = await apiCreateRoom(username, selectedCategory, location.lat, location.lon);
+        const { roomId, sessionToken } = res;
+        // Ensure the clientUserId matches the server-authoritative userId so host is recognized
+        try {
+          const serverUserId = res.room?.creatorUserId || (res.room?.players && res.room.players[0]?.userId);
+          if (serverUserId) sessionStorage.setItem('clientUserId', serverUserId);
+        } catch (e) {}
+        sessionStorage.setItem("sessionToken", sessionToken);
+        sessionStorage.setItem("username", username);
+        sessionStorage.setItem("roomId", roomId);
+        toast.success("Room created successfully!");
+        navigate(`/waiting-room/${roomId}`);
+      } catch (apiErr) {
+        // Fallback: create local room and store in localStorage so JoinRoom can see it
+        console.warn('API create-room failed, falling back to local room', apiErr);
+        const roomId = `room-${Date.now()}`; 
+        const sessionToken = `token-${Date.now()}`; 
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        let displayCode = '';
+        for (let i = 0; i < 4; i++) displayCode += chars.charAt(Math.floor(Math.random() * chars.length));
+        // Ensure host is identified by the persistent clientUserId so tabs/browser sessions match
+        const clientUserId = sessionStorage.getItem('clientUserId') || sessionToken;
+        const localRoom = {
+          roomId,
+          displayCode,
+          category: selectedCategory,
+          distanceKm: 0,
+          playerCount: 1,
+          creatorUserId: clientUserId,
+          players: [{ userId: clientUserId, username, isAdmin: true, ready: false, score: 0, connected: true }]
+        }; 
+        const existing = JSON.parse(localStorage.getItem('localRooms' ) || '[]');
+        existing.push(localRoom);
+        localStorage.setItem('localRooms', JSON.stringify(existing));
+
+        // broadcast to other tabs
+        try {
+          const bc = new BroadcastChannel('geo-doodle-localRooms');
+          bc.postMessage({ type: 'localRoomsUpdated', rooms: existing });
+          bc.close();
+        } catch (e) {
+          // BroadcastChannel may not be available in some envs
+        }
+
+        // store a local sessionToken but keep clientUserId as the identity for host
+        sessionStorage.setItem("sessionToken", sessionToken);
+        sessionStorage.setItem("username", username);
+        sessionStorage.setItem("roomId", roomId);
+        toast.success("Room created locally (offline)");
+        navigate(`/waiting-room/${roomId}`);
+      }
     } catch (error) {
       toast.error("Failed to create room");
       console.error("Error:", error);

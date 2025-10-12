@@ -22,6 +22,7 @@ export interface CurrentRound {
 
 export interface Room {
   roomId: string;
+  displayCode?: string;
   category: string;
   creatorUserId: string;
   location: Location;
@@ -54,6 +55,7 @@ export interface DrawingEvent {
 
 export interface RoomListItem {
   roomId: string;
+  displayCode?: string;
   category: string;
   distanceKm: number;
   playerCount: number;

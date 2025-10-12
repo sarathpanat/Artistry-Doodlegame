@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +20,13 @@ import {
 import { toast } from "sonner";
 import DrawingCanvas from "@/components/DrawingCanvas";
 import { Player, ChatMessage, DrawingEvent } from "@/types/game";
+import { GameWebSocket } from "@/utils/websocket";
 
 const Game = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const [players, setPlayers] = useState<Player[]>([]);
+  const wsRef = useRef<null | import("@/utils/websocket").GameWebSocket>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentGuess, setCurrentGuess] = useState("");
   const [isDrawer, setIsDrawer] = useState(false);
@@ -33,30 +35,84 @@ const Game = () => {
   const [roundNumber, setRoundNumber] = useState(1);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [remoteDrawingEvents, setRemoteDrawingEvents] = useState<DrawingEvent[]>([]);
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'reconnecting'>('disconnected');
 
   useEffect(() => {
-    // TODO: WebSocket connection for game state
     const username = sessionStorage.getItem("username") || "Guest";
-    setPlayers([
-      {
-        userId: "user-1",
-        username,
-        isAdmin: true,
-        ready: true,
-        score: 0,
-        connected: true,
-      },
-      {
-        userId: "user-2",
-        username: "Player 2",
-        isAdmin: false,
-        ready: true,
-        score: 15,
-        connected: true,
-      },
-    ]);
-    setIsDrawer(true);
-    setCurrentWord("Drishyam");
+    const sessionToken = sessionStorage.getItem("sessionToken");
+    if (!roomId || !sessionToken) {
+      // missing required info, redirect back
+      navigate('/');
+      return;
+    }
+
+    const handleMessage = (data: any) => {
+      switch (data.type) {
+        case 'roomUpdate': {
+          const room = data.room;
+          setPlayers(room.players || []);
+          break;
+        }
+        case 'chatMessage': {
+          const msg: ChatMessage = {
+            messageId: `msg-${Date.now()}`,
+            roomId: roomId!,
+            userId: data.userId,
+            username: data.username,
+            text: data.text,
+            createdAt: new Date().toISOString(),
+            isCorrect: false
+          };
+          setMessages((prev) => [...prev, msg]);
+          break;
+        }
+        case 'drawingEvent': {
+          setRemoteDrawingEvents((prev) => [...prev, data.event]);
+          break;
+        }
+        case 'yourWord': {
+          setCurrentWord(data.word || '');
+          setIsDrawer(true);
+          break;
+        }
+        case 'roundStart': {
+          setRoundNumber(data.roundNumber || 1);
+          setTimeLeft(data.timeLimitSeconds || 60);
+          // navigate / ensure we're on game page
+          break;
+        }
+        case 'correctGuess': {
+          // append a system message
+          const msg: ChatMessage = {
+            messageId: `msg-${Date.now()}`,
+            roomId: roomId!,
+            userId: data.userId,
+            username: data.username,
+            text: `${data.username} guessed correctly!`,
+            createdAt: new Date().toISOString(),
+            isCorrect: true
+          };
+          setMessages((prev) => [...prev, msg]);
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    const handleError = (err: string) => {
+      console.warn('WebSocket error', err);
+    };
+
+  const ws = new GameWebSocket(sessionToken, roomId, handleMessage, handleError, (s) => setWsStatus(s));
+    ws.connect();
+    wsRef.current = ws;
+
+    return () => {
+      try { wsRef.current?.leaveRoom(); } catch (e) {}
+      try { wsRef.current?.disconnect(); } catch (e) {}
+      wsRef.current = null;
+    };
   }, [roomId]);
 
   useEffect(() => {
@@ -90,12 +146,21 @@ const Game = () => {
     setMessages((prev) => [...prev, message]);
     setCurrentGuess("");
 
-    // TODO: Send via WebSocket
+    // Send via WebSocket
+    try {
+      wsRef.current?.sendGuess(message.text);
+    } catch (e) {
+      console.warn('Failed to send guess via websocket', e);
+    }
   };
 
   const handleDrawingEvent = (event: DrawingEvent) => {
-    // TODO: Send via WebSocket
-    console.log("Drawing event:", event);
+    // Send drawing event via WebSocket
+    try {
+      wsRef.current?.sendDrawingEvent(event);
+    } catch (e) {
+      console.warn('Failed to send drawing event', e);
+    }
   };
 
   const handleLeave = () => {
@@ -134,6 +199,7 @@ const Game = () => {
               <div className="flex items-center gap-2 text-xl font-bold">
                 <Clock className="h-5 w-5" />
                 {timeLeft}s
+                <div className="ml-3 text-sm font-mono">{wsStatus}</div>
               </div>
             </CardContent>
           </Card>

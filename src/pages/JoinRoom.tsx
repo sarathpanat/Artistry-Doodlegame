@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, MapPin, Users } from "lucide-react";
 import { toast } from "sonner";
 import { getDeviceLocation } from "@/utils/haversine";
+import { getNearbyRooms as apiGetNearbyRooms, joinRoom as apiJoinRoom } from "@/utils/websocket";
 import { RoomListItem } from "@/types/game";
 
 const JoinRoom = () => {
@@ -23,23 +24,14 @@ const JoinRoom = () => {
   const loadNearbyRooms = async () => {
     try {
       const location = await getDeviceLocation();
-      
-      // TODO: API call to get nearby rooms
-      // Mock data for now
-      setRooms([
-        {
-          roomId: "room-1",
-          category: "Malayalam Movies",
-          distanceKm: 2.5,
-          playerCount: 3,
-        },
-        {
-          roomId: "room-2",
-          category: "Kerala Dishes",
-          distanceKm: 5.8,
-          playerCount: 5,
-        },
-      ]);
+      try {
+        const res = await apiGetNearbyRooms(location.lat, location.lon, 100);
+        setRooms(res as any);
+      } catch (err) {
+        console.warn('Failed to load rooms from API, falling back to localRooms', err);
+        const local = JSON.parse(localStorage.getItem('localRooms') || '[]');
+        setRooms(local as any);
+      }
     } catch (error) {
       toast.error("Failed to load nearby rooms");
       console.error("Error:", error);
@@ -48,20 +40,61 @@ const JoinRoom = () => {
     }
   };
 
-  const handleJoinRoom = (roomId: string) => {
+  const handleJoinRoom = async (roomId: string) => {
     if (!username.trim()) {
       toast.error("Please enter your name");
       return;
     }
 
-    // TODO: API call to join room
-    const sessionToken = `token-${Date.now()}`;
-    sessionStorage.setItem("sessionToken", sessionToken);
-    sessionStorage.setItem("username", username);
-    sessionStorage.setItem("roomId", roomId);
+    try {
+      const res = await apiJoinRoom(username, roomId);
+      // server returns { roomId, sessionToken, room }
+      try {
+        const serverUserId = res.room?.players && res.room.players.find((p: any) => p.username === username)?.userId;
+        if (serverUserId) sessionStorage.setItem('clientUserId', serverUserId);
+      } catch (e) {}
+      sessionStorage.setItem("sessionToken", res.sessionToken);
+      sessionStorage.setItem("username", username);
+      sessionStorage.setItem("roomId", res.roomId);
+      toast.success("Joined room successfully!");
+      navigate(`/waiting-room/${res.roomId}`);
+    } catch (err) {
+      console.warn('Failed to join via API, falling back to localRooms', err);
+      // fallback to localRooms
+      const local = JSON.parse(localStorage.getItem('localRooms') || '[]');
+      const foundIdx = local.findIndex((r: any) => r.roomId === roomId || r.displayCode === roomId);
+      if (foundIdx >= 0) {
+        // use persistent clientUserId when available for consistency across tabs
+        const userId = sessionStorage.getItem('clientUserId') || `local-${Date.now()}`;
+        const player = {
+          userId,
+          username,
+          isAdmin: false,
+          // joined users default to ready
+          ready: true,
+          score: 0,
+          connected: true
+        };
+        local[foundIdx].players = local[foundIdx].players || [];
+        local[foundIdx].players.push(player);
+        localStorage.setItem('localRooms', JSON.stringify(local));
 
-    toast.success("Joined room successfully!");
-    navigate(`/waiting-room/${roomId}`);
+        const sessionToken = `token-${Date.now()}`;
+        sessionStorage.setItem("sessionToken", sessionToken);
+        sessionStorage.setItem("username", username);
+        sessionStorage.setItem("roomId", local[foundIdx].roomId);
+
+        toast.success("Joined local room");
+        navigate(`/waiting-room/${local[foundIdx].roomId}`);
+        try {
+          const bc = new BroadcastChannel('geo-doodle-localRooms');
+          bc.postMessage({ type: 'localRoomsUpdated', rooms: local });
+          bc.close();
+        } catch (e) {}
+      } else {
+        toast.error("Failed to join room");
+      }
+    }
   };
 
   return (
@@ -84,6 +117,27 @@ const JoinRoom = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Dev helper: clear all rooms on server */}
+            {import.meta.env.DEV && (
+              <div className="text-right">
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      const base = (import.meta.env.VITE_GAME_SERVER_URL || '').replace(/\/$/, '');
+                      const basePath = (import.meta.env.VITE_GAME_WS_BASE || '').replace(/\/$/, '');
+                      await fetch(`${base}${basePath}/clear-rooms`, { method: 'POST' });
+                      toast.success('Cleared rooms');
+                      loadNearbyRooms();
+                    } catch (e) {
+                      toast.error('Failed to clear rooms');
+                    }
+                  }}
+                >
+                  Clear Rooms (dev)
+                </Button>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="username" className="text-base font-semibold">Your Name</Label>
               <Input
@@ -116,7 +170,7 @@ const JoinRoom = () => {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="space-y-1">
-                            <h3 className="font-semibold text-lg">{room.category}</h3>
+                            <h3 className="font-semibold text-lg">{room.category} — <span className="font-mono">{room.displayCode || room.roomId}</span></h3>
                             <div className="flex items-center gap-4 text-sm text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <MapPin className="h-4 w-4" />
