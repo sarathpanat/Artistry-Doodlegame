@@ -22,25 +22,40 @@ const DrawingCanvas = ({ isDrawer, onDrawingEvent, remoteEvents }: DrawingCanvas
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [currentPath, setCurrentPath] = useState<{ x: number; y: number }[]>([]);
 
+  // Initialize and resize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const resizeCanvas = () => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    // Set canvas size
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+      // Save current drawing
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Initialize canvas
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Set canvas size to match display size
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+
+      // Restore or initialize
+      if (imageData.width > 0) {
+        ctx.putImageData(imageData, 0, 0);
+      } else {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
   useEffect(() => {
     if (!remoteEvents || remoteEvents.length === 0) return;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -58,10 +73,14 @@ const DrawingCanvas = ({ isDrawer, onDrawingEvent, remoteEvents }: DrawingCanvas
 
         ctx.beginPath();
         event.points.forEach((point, index) => {
+          // Scale points to current canvas size
+          const scaledX = (point.x / 100) * canvas.width;
+          const scaledY = (point.y / 100) * canvas.height;
+
           if (index === 0) {
-            ctx.moveTo(point.x, point.y);
+            ctx.moveTo(scaledX, scaledY);
           } else {
-            ctx.lineTo(point.x, point.y);
+            ctx.lineTo(scaledX, scaledY);
           }
         });
         ctx.stroke();
@@ -69,74 +88,101 @@ const DrawingCanvas = ({ isDrawer, onDrawingEvent, remoteEvents }: DrawingCanvas
     });
   }, [remoteEvents]);
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawer) return;
-    
+  // Get coordinates from mouse or touch event
+  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    
+    if (!canvas) return null;
+
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setIsDrawing(true);
-    setCurrentPath([{ x, y }]);
+    let clientX, clientY;
+
+    if ('touches' in e) {
+      if (e.touches.length === 0) return null;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    // Calculate coordinates relative to canvas and normalize to percentage
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+
+    return { x, y };
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawer) return;
+    e.preventDefault();
+
+    const coords = getCoordinates(e);
+    if (!coords) return;
+
+    setIsDrawing(true);
+    setCurrentPath([coords]);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !isDrawer) return;
-    
+    e.preventDefault();
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setCurrentPath((prev) => [...prev, { x, y }]);
-    
+
+    const coords = getCoordinates(e);
+    if (!coords) return;
+
+    setCurrentPath((prev) => [...prev, coords]);
+
     ctx.strokeStyle = tool === "eraser" ? "white" : currentColor;
     ctx.lineWidth = tool === "eraser" ? 20 : lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    
+
     ctx.beginPath();
     const lastPoint = currentPath[currentPath.length - 1];
-    ctx.moveTo(lastPoint.x, lastPoint.y);
-    ctx.lineTo(x, y);
+    // Convert percentage back to pixels for drawing
+    const lastX = (lastPoint.x / 100) * canvas.width;
+    const lastY = (lastPoint.y / 100) * canvas.height;
+    const currentX = (coords.x / 100) * canvas.width;
+    const currentY = (coords.y / 100) * canvas.height;
+
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(currentX, currentY);
     ctx.stroke();
   };
 
   const stopDrawing = () => {
     if (!isDrawing) return;
-    
+
     setIsDrawing(false);
-    
+
     if (currentPath.length > 0 && onDrawingEvent) {
       onDrawingEvent({
         type: "stroke",
         color: tool === "eraser" ? "white" : currentColor,
         width: tool === "eraser" ? 20 : lineWidth,
-        points: currentPath,
+        points: currentPath, // Already in percentage
       });
     }
-    
+
     setCurrentPath([]);
   };
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    
+
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     if (onDrawingEvent) {
       onDrawingEvent({ type: "clear" });
     }
@@ -174,11 +220,10 @@ const DrawingCanvas = ({ isDrawer, onDrawingEvent, remoteEvents }: DrawingCanvas
                   setCurrentColor(color);
                   setTool("pen");
                 }}
-                className={`w-8 h-8 rounded-full border-2 transition-smooth ${
-                  currentColor === color && tool === "pen"
+                className={`w-8 h-8 rounded-full border-2 transition-smooth ${currentColor === color && tool === "pen"
                     ? "border-game-active scale-110"
                     : "border-border hover:scale-105"
-                }`}
+                  }`}
                 style={{ backgroundColor: color }}
               />
             ))}
@@ -202,6 +247,10 @@ const DrawingCanvas = ({ isDrawer, onDrawingEvent, remoteEvents }: DrawingCanvas
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+          onTouchCancel={stopDrawing}
           className="w-full bg-game-canvas aspect-video cursor-crosshair"
           style={{ touchAction: "none" }}
         />
