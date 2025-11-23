@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:server": "tsc server/game-server-node.ts --outDir dist-server --esModuleInterop --resolveJsonModule --skipLibCheck",
-    "server": "node dist-server/server/game-server-node.js",
+    "build:server": "tsc server/game-server-node.ts --outDir dist-server --module ES2020 --target ES2020 --esModuleInterop --resolveJsonModule --skipLibCheck --moduleResolution node",
+    "server": "node dist-server/game-server-node.js",
     "server:dev": "tsx server/game-server-node.ts",
     "lint": "eslint .",
     "preview": "vite preview"
