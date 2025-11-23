@@ -517,20 +517,23 @@ function startNewRound(roomId: string) {
     p.guessTime = undefined;
   });
 
+  const activePlayers = room.players.filter(p => p.connected);
+  if (activePlayers.length === 0) return;
+
   const roundNumber = (room.currentRound?.roundNumber || 0) + 1;
-  const MAX_ROUNDS = 3; // Only 3 rounds total
+  const ROUNDS_PER_PLAYER = 3; // Each player gets 3 turns
+  const MAX_ROUNDS = activePlayers.length * ROUNDS_PER_PLAYER; // Total rounds = players × 3
 
   if (roundNumber > MAX_ROUNDS) {
     endGame(roomId);
     return;
   }
 
-  const activePlayers = room.players.filter(p => p.connected);
-  if (activePlayers.length === 0) return;
-
-  // FIX: Rotate drawer - use roundNumber to select different player each round
-  const drawerIndex = (roundNumber - 1) % activePlayers.length;
+  // FIX: Rotate drawer - cycle through all players, each gets 3 turns
+  // Round 1-3: Player 0, Round 4-6: Player 1, Round 7-9: Player 2, etc.
+  const drawerIndex = Math.floor((roundNumber - 1) / ROUNDS_PER_PLAYER) % activePlayers.length;
   const drawer = activePlayers[drawerIndex];
+  const playerRoundNumber = Math.floor((roundNumber - 1) / activePlayers.length) + 1; // Which of their 3 rounds
 
   room.currentRound = {
     roundNumber,
@@ -546,7 +549,7 @@ function startNewRound(roomId: string) {
   const timerEndsAt = new Date(Date.now() + 20000).toISOString(); // 20 seconds
   room.currentRound.timerEndsAt = timerEndsAt;
 
-  console.log(`Round ${roundNumber}/${MAX_ROUNDS} started, drawer: ${drawer.username} (index ${drawerIndex})`);
+  console.log(`Round ${roundNumber}/${MAX_ROUNDS} started, drawer: ${drawer.username} (turn ${playerRoundNumber}/3)`);
 
   // Send words only to the drawer
   const drawerSocket = sockets.get(drawer.socketId || '');
@@ -558,7 +561,8 @@ function startNewRound(roomId: string) {
         timeLimit: 20,
         timerEndsAt: timerEndsAt,
         roundNumber: roundNumber,
-        totalRounds: MAX_ROUNDS
+        totalRounds: MAX_ROUNDS,
+        playerRound: playerRoundNumber
       }));
     } catch (e) {
       console.error('Error sending to drawer:', e);
@@ -576,7 +580,8 @@ function startNewRound(roomId: string) {
           timeLimit: 20,
           timerEndsAt: timerEndsAt,
           roundNumber: roundNumber,
-          totalRounds: MAX_ROUNDS
+          totalRounds: MAX_ROUNDS,
+          playerRound: playerRoundNumber
         }));
       }
     }
