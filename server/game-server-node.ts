@@ -29,6 +29,7 @@ interface Player {
   score: number;
   connected: boolean;
   socketId?: string;
+  hasGuessed?: boolean; // Track if player has guessed correctly in current round
 }
 
 interface Room {
@@ -54,24 +55,179 @@ const DEFAULT_LON = 75.7839;
 
 const keralaDict: Record<string, string[]> = {
   "Malayalam Movies": [
+    // Classic & Iconic
     "Drishyam", "Lucifer", "Premam", "Bangalore Days", "Spadikam",
     "Kireedam", "Chotta Mumbai", "Hridayam", "Kumbalangi Nights",
     "Maheshinte Prathikaram", "Thondimuthalum Driksakshiyum",
-    "Angamaly Diaries", "Ustad Hotel", "Charlie", "Action Hero Biju"
+    "Angamaly Diaries", "Ustad Hotel", "Charlie", "Action Hero Biju",
+    "Amen", "Ee Ma Yau", "Virus", "Trance", "Jallikattu",
+    "The Great Indian Kitchen", "Minnal Murali", "Joji", "Malik",
+    "Nayattu", "Kala", "Home", "Unda", "Android Kunjappan",
+    "Ee Adutha Kaalathu", "Salt N Pepper", "22 Female Kottayam",
+    "Classmates", "Manichitrathazhu", "Devasuram", "Narasimham",
+    "Varavelpu", "His Highness Abdullah", "Godfather", "Rajavinte Makan",
+    "Oru Vadakkan Veeragatha", "Bharatham", "Thalapathi", "Iruvar",
+
+    // 2020s Era
+    "Bheeshma Parvam", "Kaduva", "Bro Daddy", "Hridayam", "Marakkar",
+    "Kurup", "Aaraattu", "Makal", "Nna Thaan Case Kodu", "Pada",
+    "Churuli", "One", "The Priest", "Cold Case", "Drishyam 2",
+    "Ayyappanum Koshiyum", "Sufiyum Sujatayum", "CU Soon", "Sara's",
+    "Forensic", "Kilometers and Kilometers", "Halal Love Story", "Kappela",
+    "Anjaam Pathiraa", "Trance", "Varane Avashyamund", "Driving License",
+    "Love Action Drama", "Uyare", "Ishq", "Argentina Fans Kaattoorkadavu",
+    "Varathan", "Koode", "Njan Prakashan", "Sudani from Nigeria",
+    "Joseph", "Mikhael", "Odiyan", "Kayamkulam Kochunni", "Abrahaminte Santhathikal",
+
+    // 2010s Hits
+    "Take Off", "Godha", "Thondimuthalum Driksakshiyum", "Mayaanadhi",
+    "Thinkalazhcha Nishchayam", "Annayum Rasoolum", "Ohm Shanthi Oshaana",
+    "Ennu Ninte Moideen", "Kunjiramayanam", "Maheshinte Prathikaaram",
+    "Kammatipaadam", "Jacobinte Swargarajyam", "Oppam", "Pulimurugan",
+    "Munthirivallikal Thalirkkumbol", "The Great Father", "Ramaleela",
+    "Velipadinte Pusthakam", "Thondimuthalum", "Ezra", "Angamaly Diaries",
+    "Godha", "Njandukalude Nattil Oridavela", "Thrissivaperoor Kliptham",
+    "Oru Mexican Aparatha", "Parava", "Thondimuthalum Driksakshiyum",
+
+    // Comedy Classics
+    "In Harihar Nagar", "Ramji Rao Speaking", "Sandesham", "Nadodikattu",
+    "Pattanapravesham", "Akkare Akkare Akkare", "Vietnam Colony",
+    "CID Moosa", "Meesa Madhavan", "Kunjikoonan", "Punjabi House",
+    "Chronic Bachelor", "Thilakkam", "Kalyanaraman", "Runway",
+    "Chanthupottu", "Udayananu Tharam", "Chocolate", "Mayavi",
+    "Twenty Twenty", "Pokkiri Raja", "Ee Pattanathil Bhootham",
+    "Minnaram", "Kilukkam", "Mithunam", "Thenmavin Kombath",
+    "Mannar Mathai Speaking", "Mazha Peyyunnu Maddalam Kottunnu",
+
+    // Drama & Serious
+    "Thanmathra", "Achuvinte Amma", "Akashadoothu", "Kazhcha",
+    "Perumazhakkalam", "Paleri Manikyam", "Adaminte Makan Abu",
+    "Spirit", "Celluloid", "Nadan", "Pathemari", "Ennu Ninte Moideen",
+    "Kammatti Paadam", "Thondimuthalum Driksakshiyum", "Take Off",
+    "Ee Ma Yau", "Virus", "Unda", "Ishq", "Kala", "Nayattu",
+    "The Great Indian Kitchen", "Joji", "Churuli", "Nna Thaan Case Kodu",
+
+    // Action & Thriller
+    "Rajavinte Makan", "Irupatham Noottandu", "Commissioner",
+    "The King", "Ravanaprabhu", "Samrajyam", "Samrajyam 2",
+    "Big B", "Shikkar", "Pokkiri Raja", "Casanova", "The Thriller",
+    "Mumbai Police", "Memories", "7th Day", "Drishyam", "Papanasam",
+    "Oppam", "Pulimurugan", "The Great Father", "Abrahaminte Santhathikal",
+    "Mikhael", "Joseph", "Lucifer", "Driving License", "Anjaam Pathiraa",
+    "Cold Case", "Kurup", "Bheeshma Parvam", "Kaduva", "Kannur Squad",
+
+    // Romance
+    "Kireedam", "Thoovanathumbikal", "Ennu Swantham Janakikutty",
+    "Niram", "Oru Minnaminunginte Nurunguvettam", "Classmates",
+    "Chocolate", "Notebook", "Pranayakalam", "Katha Parayumbol",
+    "Cocktail", "Thattathin Marayathu", "Usthad Hotel", "Neram",
+    "Ohm Shanthi Oshaana", "Bangalore Days", "Premam", "Oru Vadakkan Selfie",
+    "Kali", "Jacobinte Swargarajyam", "Kammatti Paadam", "Godha",
+    "Parava", "Theevandi", "Ishq", "Halal Love Story", "Hridayam",
+
+    // Family Entertainment
+    "Kilukkam", "His Highness Abdullah", "Mithunam", "Manichithrathazhu",
+    "Spadikam", "Aaram Thampuran", "Narasimham", "Chronic Bachelor",
+    "Runway", "Twenty Twenty", "Bodyguard", "Grandmaster",
+    "Drishyam", "Ennu Ninte Moideen", "Jacobinte Swargarajyam",
+    "Oppam", "Munthirivallikal Thalirkkumbol", "Velipadinte Pusthakam",
+    "Ramaleela", "Bro Daddy", "Home", "Hridayam", "Nna Thaan Case Kodu"
   ],
-  "Kerala Dishes": [
-    "Puttu", "Appam", "Idiyappam", "Sadya", "Malabar Biryani",
-    "Fish Curry", "Beef Fry", "Parotta", "Avial", "Thoran",
-    "Karimeen Pollichathu", "Erissery", "Olan", "Inji Curry",
-    "Pachadi", "Payasam", "Unniyappam", "Ada Pradhaman"
-  ],
-  "Kerala Places": [
-    "Munnar", "Alleppey", "Wayanad", "Kovalam", "Varkala",
-    "Thekkady", "Athirapally", "Kumarakom", "Bekal", "Vagamon"
-  ],
-  "Malayalam Actors": [
-    "Mohanlal", "Mammootty", "Prithviraj", "Fahadh Faasil",
-    "Dulquer Salmaan", "Nivin Pauly", "Jayasurya", "Tovino Thomas"
+
+  // "Kerala": [
+  //   // Commented out for now
+  // ],
+
+  "Objects": [
+    // Common Objects
+    "Apple", "Banana", "Orange", "Grapes", "Mango", "Pineapple",
+    "Watermelon", "Strawberry", "Cherry", "Lemon", "Coconut", "Peach",
+    "Car", "Bus", "Truck", "Bicycle", "Motorcycle", "Train",
+    "Airplane", "Helicopter", "Boat", "Ship", "Rocket", "Submarine",
+    "House", "Building", "Castle", "Bridge", "Tower", "Pyramid",
+    "Tree", "Flower", "Rose", "Sunflower", "Tulip", "Cactus",
+    "Sun", "Moon", "Star", "Cloud", "Rainbow", "Lightning",
+    "Mountain", "River", "Ocean", "Beach", "Desert", "Forest",
+
+    // Household Items
+    "Chair", "Table", "Bed", "Sofa", "Desk", "Shelf",
+    "Door", "Window", "Mirror", "Clock", "Lamp", "Fan",
+    "Cup", "Plate", "Bowl", "Spoon", "Fork", "Knife",
+    "Glass", "Bottle", "Jar", "Pot", "Pan", "Kettle",
+    "Pillow", "Blanket", "Curtain", "Carpet", "Rug", "Towel",
+    "Brush", "Comb", "Scissors", "Needle", "Thread", "Button",
+    "Candle", "Matchbox", "Lighter", "Ashtray", "Vase", "Frame",
+
+    // Electronics
+    "Phone", "Computer", "Laptop", "Tablet", "TV", "Radio",
+    "Camera", "Watch", "Headphones", "Speaker", "Microphone", "Remote",
+    "Keyboard", "Mouse", "Monitor", "Printer", "Scanner", "Router",
+    "Charger", "Battery", "Cable", "Plug", "Switch", "Socket",
+
+    // School & Office
+    "Book", "Notebook", "Pen", "Pencil", "Eraser", "Ruler",
+    "Sharpener", "Stapler", "Paperclip", "Tape", "Glue", "Marker",
+    "Crayon", "Paint", "Brush", "Canvas", "Easel", "Palette",
+    "Bag", "Backpack", "Briefcase", "Wallet", "Purse", "Suitcase",
+    "Calculator", "Calendar", "Diary", "Envelope", "Stamp", "Letter",
+
+    // Clothing & Accessories
+    "Shirt", "Pants", "Dress", "Skirt", "Jacket", "Coat",
+    "Shoe", "Boot", "Sandal", "Slipper", "Sock", "Hat",
+    "Cap", "Scarf", "Glove", "Belt", "Tie", "Bow",
+    "Glasses", "Sunglasses", "Watch", "Ring", "Necklace", "Bracelet",
+    "Earring", "Crown", "Helmet", "Mask", "Umbrella", "Raincoat",
+
+    // Sports & Games
+    "Ball", "Football", "Basketball", "Tennis Ball", "Cricket Ball",
+    "Bat", "Racket", "Hockey Stick", "Golf Club", "Bowling Pin",
+    "Chess", "Dice", "Cards", "Puzzle", "Doll", "Teddy Bear",
+    "Kite", "Yo-Yo", "Frisbee", "Skateboard", "Roller Skates",
+
+    // Musical Instruments
+    "Guitar", "Piano", "Drum", "Flute", "Violin", "Trumpet",
+    "Saxophone", "Harmonica", "Accordion", "Harp", "Banjo", "Ukulele",
+    "Tambourine", "Xylophone", "Cymbals", "Maracas", "Bongo", "Sitar",
+
+    // Food & Kitchen
+    "Pizza", "Burger", "Sandwich", "Hot Dog", "Taco", "Sushi",
+    "Cake", "Cookie", "Donut", "Ice Cream", "Candy", "Chocolate",
+    "Bread", "Cheese", "Egg", "Milk", "Butter", "Yogurt",
+    "Rice", "Pasta", "Noodles", "Soup", "Salad", "Steak",
+    "Chicken", "Fish", "Shrimp", "Lobster", "Crab", "Oyster",
+
+    // Animals
+    "Cat", "Dog", "Bird", "Fish", "Rabbit", "Mouse",
+    "Elephant", "Lion", "Tiger", "Bear", "Monkey", "Giraffe",
+    "Zebra", "Horse", "Cow", "Pig", "Sheep", "Goat",
+    "Chicken", "Duck", "Penguin", "Owl", "Eagle", "Parrot",
+    "Snake", "Lizard", "Turtle", "Frog", "Crocodile", "Dinosaur",
+    "Butterfly", "Bee", "Ant", "Spider", "Ladybug", "Dragonfly",
+
+    // Shapes & Symbols
+    "Heart", "Star", "Circle", "Square", "Triangle", "Diamond",
+    "Arrow", "Cross", "Plus", "Minus", "Question Mark", "Exclamation",
+    "Smiley", "Peace Sign", "Thumbs Up", "OK Sign", "Victory Sign",
+
+    // Tools & Equipment
+    "Hammer", "Screwdriver", "Wrench", "Pliers", "Saw", "Drill",
+    "Nail", "Screw", "Bolt", "Nut", "Washer", "Anchor",
+    "Axe", "Shovel", "Rake", "Hoe", "Pickaxe", "Wheelbarrow",
+    "Ladder", "Rope", "Chain", "Hook", "Lock", "Key",
+
+    // Nature & Weather
+    "Leaf", "Branch", "Root", "Seed", "Fruit", "Vegetable",
+    "Grass", "Bush", "Vine", "Moss", "Mushroom", "Fern",
+    "Rock", "Stone", "Pebble", "Sand", "Soil", "Mud",
+    "Rain", "Snow", "Ice", "Hail", "Fog", "Mist",
+    "Wind", "Storm", "Thunder", "Tornado", "Hurricane", "Earthquake",
+
+    // Miscellaneous
+    "Flag", "Map", "Compass", "Telescope", "Microscope", "Magnifying Glass",
+    "Balloon", "Bubble", "Soap", "Sponge", "Bucket", "Basket",
+    "Box", "Crate", "Barrel", "Chest", "Safe", "Vault",
+    "Robot", "Alien", "UFO", "Spaceship", "Satellite", "Astronaut",
+    "Anchor", "Wheel", "Gear", "Spring", "Magnet", "Battery"
   ]
 };
 
@@ -134,7 +290,7 @@ function startWordSelection(roomId: string) {
   const words = getRandomWords(room.category, 2); // 2 word choices
 
   // Set timer end time for word selection
-  const timerEndsAt = new Date(Date.now() + 15000).toISOString(); // 15 seconds
+  const timerEndsAt = new Date(Date.now() + 20000).toISOString(); // 20 seconds
   room.currentRound.timerEndsAt = timerEndsAt;
 
   // Send words only to the drawer
@@ -145,7 +301,7 @@ function startWordSelection(roomId: string) {
       socket.send(JSON.stringify({
         type: 'wordSelectionStart',
         words: words,
-        timeLimit: 15,
+        timeLimit: 20,
         timerEndsAt: timerEndsAt
       }));
     }
@@ -159,7 +315,7 @@ function startWordSelection(roomId: string) {
         socket.send(JSON.stringify({
           type: 'wordSelectionStart',
           words: [], // Watchers don't see words
-          timeLimit: 15,
+          timeLimit: 20,
           timerEndsAt: timerEndsAt
         }));
       }
@@ -184,7 +340,7 @@ function startWordSelection(roomId: string) {
         moveToNextGame(roomId);
       }, 2000);
     }
-  }, 15000);
+  }, 20000);
 }
 
 /**
@@ -194,8 +350,11 @@ function startDrawingPhase(roomId: string) {
   const room = rooms.get(roomId);
   if (!room || !room.currentRound || !room.currentRound.word) return;
 
-  const timerEndsAt = new Date(Date.now() + 30000).toISOString(); // 30 seconds
+  const timerEndsAt = new Date(Date.now() + 50000).toISOString(); // 50 seconds
   room.currentRound.timerEndsAt = timerEndsAt;
+
+  // Reset hasGuessed flags for all players
+  room.players.forEach(p => p.hasGuessed = false);
 
   // Send word only to drawer
   const drawer = room.players.find(p => p.userId === room.currentRound.drawerUserId);
@@ -239,7 +398,7 @@ function startDrawingPhase(roomId: string) {
     setTimeout(() => {
       moveToNextGame(roomId);
     }, 2000);
-  }, 30000); // 30 seconds
+  }, 50000); // 30 seconds
 }
 
 /**
@@ -640,17 +799,18 @@ wss.on('connection', (ws) => {
             if (guess === word) {
               // Correct guess!
               player.score += 10;
+              player.hasGuessed = true; // Mark player as having guessed correctly
 
               const drawer = room.players.find(p => p.userId === room.currentRound?.drawerUserId);
               if (drawer) {
                 drawer.score += 5; // Artist gets 5 points
               }
 
+              // Don't reveal the word in the message - just say they guessed correctly
               broadcastToRoom(currentSession.roomId, {
                 type: 'correctGuess',
                 userId: currentSession.userId,
                 username: currentSession.username,
-                word: room.currentRound.word,
                 pointsAwarded: 10,
                 drawerUserId: room.currentRound.drawerUserId
               });
@@ -662,8 +822,20 @@ wss.on('connection', (ws) => {
 
               console.log(`${currentSession.username} guessed correctly: ${word}`);
 
-              // Move to next game after 3 seconds
-              setTimeout(() => moveToNextGame(currentSession!.roomId), 3000);
+              // Check if all non-drawer players have guessed correctly
+              const nonDrawerPlayers = room.players.filter(p =>
+                p.userId !== room.currentRound?.drawerUserId && p.connected
+              );
+              const allGuessed = nonDrawerPlayers.every(p => p.hasGuessed);
+
+              if (allGuessed) {
+                // All players guessed! Move to next game immediately
+                console.log('All players guessed correctly! Moving to next game...');
+                setTimeout(() => moveToNextGame(currentSession!.roomId), 1000);
+              } else {
+                // Some players haven't guessed yet, wait for timeout
+                // Don't auto-advance
+              }
             } else {
               // Wrong guess, broadcast as chat
               broadcastToRoom(currentSession.roomId, {

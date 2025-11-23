@@ -208,7 +208,7 @@ const JoinRoom = () => {
             <div className="space-y-3">
               <Label className="text-base font-semibold flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
-                Available Rooms Nearby
+                Active Gaming Rooms Nearby
               </Label>
 
               {!hasLocation && (

@@ -40,10 +40,10 @@ const Index = () => {
       <div className="text-center space-y-8 animate-float">
         <div className="space-y-4">
           <h1 className="text-6xl md:text-7xl font-bold text-primary-foreground drop-shadow-lg">
-            Kerala Draw
+            Artistry
           </h1>
           <p className="text-xl md:text-2xl text-primary-foreground/90 font-medium">
-            Draw, Guess & Win with Friends Nearby
+            Draw & Guess - Doodle Game
           </p>
         </div>
 
@@ -69,9 +69,10 @@ const Index = () => {
           </Button>
         </div>
 
-        <div className="mt-12 text-primary-foreground/75 text-sm">
-          <p>🎨 Malayalam Movies • Kerala Dishes • Famous Places</p>
-          <p className="mt-2">📍 Find rooms within 100km radius</p>
+        <div className="text-primary-foreground/80 text-sm space-y-2">
+          <p className="flex items-center justify-center gap-2">
+            <span>🎨 Malayalam Movies • Objects</span>
+          </p>
         </div>
       </div>
     </main>

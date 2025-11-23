@@ -153,7 +153,7 @@ const Game = () => {
             roomId: roomId!,
             userId: data.userId,
             username: data.username,
-            text: `✓ ${data.username} guessed correctly! The word was "${data.word}"`,
+            text: `✓ ${data.username} guessed correctly!`,
             createdAt: new Date().toISOString(),
             isCorrect: true
           };
