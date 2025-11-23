@@ -392,7 +392,7 @@ function startWordSelection(roomId: string) {
 
       // Move to next game after 2 seconds
       setTimeout(() => {
-        moveToNextGame(roomId);
+        startNewRound(roomId);
       }, 2000);
     }
   }, 20000);
@@ -501,53 +501,6 @@ function startDrawingPhase(roomId: string) {
 /**
  * Move to next game in the round or start new round
  */
-function moveToNextGame(roomId: string) {
-  const room = rooms.get(roomId);
-  if (!room || !room.currentRound) return;
-
-  const activePlayers = room.players.filter(p => p.connected);
-  if (activePlayers.length === 0) return;
-
-  const currentGameNumber = room.currentRound.gameNumber || 1;
-  const totalGames = activePlayers.length;
-
-  if (currentGameNumber >= totalGames) {
-    // Round finished, check if more rounds needed
-    const currentRoundNumber = room.currentRound.roundNumber || 1;
-    const totalRounds = 3; // Fixed 3 rounds
-
-    if (currentRoundNumber >= totalRounds) {
-      // Game completely finished!
-      endGame(roomId);
-      return;
-    }
-
-    // Start next round
-    startNewRound(roomId);
-  } else {
-    // Move to next game in same round
-    const nextGameNumber = currentGameNumber + 1;
-    const drawerIndex = nextGameNumber - 1;
-    const nextDrawer = activePlayers[drawerIndex];
-
-    room.currentRound.gameNumber = nextGameNumber;
-    room.currentRound.drawerUserId = nextDrawer.userId;
-    room.currentRound.word = ''; // Reset word
-
-    console.log(`Starting game ${nextGameNumber}/${totalGames} in room ${roomId}, drawer: ${nextDrawer.username}`);
-
-    broadcastToRoom(roomId, {
-      type: 'roomUpdate',
-      room
-    });
-
-    // Start word selection for next game
-    setTimeout(() => {
-      startWordSelection(roomId);
-    }, 1000);
-  }
-}
-
 /**
  * Start a new round
  */
@@ -555,40 +508,92 @@ function startNewRound(roomId: string) {
   const room = rooms.get(roomId);
   if (!room) return;
 
-  const roundNumber = (room.currentRound?.roundNumber || 0) + 1;
-  const activePlayers = room.players.filter(p => p.connected);
+  // Clear any existing timers for this room
+  clearAllTimers(roomId);
 
+  // Reset player guess tracking
+  room.players.forEach(p => {
+    p.hasGuessed = false;
+    p.guessTime = undefined;
+  });
+
+  const roundNumber = (room.currentRound?.roundNumber || 0) + 1;
+  const MAX_ROUNDS = 3; // Only 3 rounds total
+
+  if (roundNumber > MAX_ROUNDS) {
+    endGame(roomId);
+    return;
+  }
+
+  const activePlayers = room.players.filter(p => p.connected);
   if (activePlayers.length === 0) return;
 
-  const drawer = activePlayers[0]; // Start with first player
+  // FIX: Rotate drawer - use roundNumber to select different player each round
+  const drawerIndex = (roundNumber - 1) % activePlayers.length;
+  const drawer = activePlayers[drawerIndex];
 
   room.currentRound = {
     roundNumber,
-    gameNumber: 1,
-    totalGames: activePlayers.length,
     drawerUserId: drawer.userId,
-    word: '',
-    wordRevealed: false,
-    timerEndsAt: ''
+    word: null,
+    timerEndsAt: '',
+    drawingStartTime: 0
   };
 
-  console.log(`Round ${roundNumber} started in room ${roomId}`);
+  const words = getRandomWords(room.category, 2); // 2 word choices
 
-  broadcastToRoom(roomId, {
-    type: 'roundStart',
-    roundNumber,
-    totalGames: activePlayers.length
+  // Set timer end time for word selection
+  const timerEndsAt = new Date(Date.now() + 20000).toISOString(); // 20 seconds
+  room.currentRound.timerEndsAt = timerEndsAt;
+
+  console.log(`Round ${roundNumber}/${MAX_ROUNDS} started, drawer: ${drawer.username} (index ${drawerIndex})`);
+
+  // Send words only to the drawer
+  const drawerSocket = sockets.get(drawer.socketId || '');
+  if (drawerSocket) {
+    try {
+      drawerSocket.send(JSON.stringify({
+        type: 'wordSelectionStart',
+        words: words,
+        timeLimit: 20,
+        timerEndsAt: timerEndsAt,
+        roundNumber: roundNumber,
+        totalRounds: MAX_ROUNDS
+      }));
+    } catch (e) {
+      console.error('Error sending to drawer:', e);
+    }
+  }
+
+  // Send notification to other players
+  room.players.forEach(p => {
+    if (p.userId !== drawer.userId && p.socketId) {
+      const socket = sockets.get(p.socketId);
+      if (socket) {
+        socket.send(JSON.stringify({
+          type: 'wordSelectionStart',
+          words: [], // Watchers don't see words
+          timeLimit: 20,
+          timerEndsAt: timerEndsAt,
+          roundNumber: roundNumber,
+          totalRounds: MAX_ROUNDS
+        }));
+      }
+    }
   });
 
-  broadcastToRoom(roomId, {
-    type: 'roomUpdate',
-    room
-  });
-
-  // Start word selection after 2 seconds
-  setTimeout(() => {
-    startWordSelection(roomId);
-  }, 2000);
+  // Auto-select random word if drawer doesn't choose in time
+  const timers = roomTimers.get(roomId) || {};
+  timers.wordSelectionTimer = setTimeout(() => {
+    const currentRoom = rooms.get(roomId);
+    if (currentRoom && currentRoom.currentRound && !currentRoom.currentRound.word) {
+      const randomWord = words[Math.floor(Math.random() * words.length)];
+      currentRoom.currentRound.word = randomWord;
+      console.log(`Auto-selected word: ${randomWord}`);
+      startDrawingPhase(roomId);
+    }
+  }, 20000);
+  roomTimers.set(roomId, timers);
 }
 
 /**

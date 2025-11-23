@@ -107,6 +107,7 @@ const Game = () => {
 
         case 'wordSelected': {
           console.log('Received wordSelected event:', data);
+          const timeLimit = data.timeLimit || 80; // Use server's time limit
           if (data.drawerUserId === clientUserId) {
             setCurrentWord(data.word);
             toast.success(`Your word: ${data.word}`);
@@ -114,8 +115,8 @@ const Game = () => {
             toast.info('Artist has chosen a word!');
           }
           setGamePhase('drawing');
-          // Timer will be set from roomUpdate with timerEndsAt
-          setTimerEndsAt(new Date(Date.now() + 30000).toISOString()); // 30 seconds fallback
+          setTimeLeft(timeLimit); // Set correct time
+          setTimerEndsAt(data.timerEndsAt || new Date(Date.now() + (timeLimit * 1000)).toISOString());
           break;
         }
 
@@ -428,28 +429,20 @@ const Game = () => {
                 </Card>
               )}
 
-              {/* Artist chat view (read-only) */}
-              {isDrawer && messages.length > 0 && (
-                <Card className="shadow-game">
+              {/* Artist word display - show what they need to draw */}
+              {isDrawer && currentWord && gamePhase === 'drawing' && (
+                <Card className="shadow-game border-2 border-primary">
                   <CardHeader>
-                    <CardTitle>Player Guesses</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      <Palette className="h-5 w-5 text-primary" />
+                      Your Word
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ScrollArea className="h-48 rounded-lg border p-4">
-                      <div className="space-y-2">
-                        {messages.map((msg) => (
-                          <div
-                            key={msg.messageId}
-                            className={`p-2 rounded-lg ${msg.isCorrect
-                              ? "bg-primary/10 text-primary font-semibold"
-                              : "bg-muted"
-                              }`}
-                          >
-                            <span className="font-semibold">{msg.username}:</span> {msg.text}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
+                    <div className="text-center p-6 bg-primary/10 rounded-lg">
+                      <p className="text-3xl font-bold text-primary">{currentWord}</p>
+                      <p className="text-sm text-muted-foreground mt-2">Draw this word for others to guess!</p>
+                    </div>
                   </CardContent>
                 </Card>
               )}
