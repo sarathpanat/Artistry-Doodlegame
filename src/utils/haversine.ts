@@ -18,7 +18,8 @@ export function haversineKm(
 export function getDeviceLocation(): Promise<{ lat: number; lon: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation not supported'));
+      // Fallback to default coordinates (11.2488 N, 75.7839 E)
+      resolve({ lat: 11.2488, lon: 75.7839 });
       return;
     }
 
@@ -30,7 +31,8 @@ export function getDeviceLocation(): Promise<{ lat: number; lon: number }> {
         });
       },
       (error) => {
-        reject(error);
+        // If the user denies or geolocation fails, return default coords
+        resolve({ lat: 11.2488, lon: 75.7839 });
       },
       {
         enableHighAccuracy: true,
