@@ -83,7 +83,23 @@ const Game = () => {
             setDrawerUsername(drawer?.username || '');
             const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
             const drawerUserId = room.currentRound?.drawerUserId;
-            setIsDrawer(Boolean(drawerUserId === clientUserId || drawerUserId === me?.userId));
+            const newIsDrawer = Boolean(drawerUserId === clientUserId || drawerUserId === me?.userId);
+
+            console.log('[RoomUpdate] Drawer:', drawerUserId, 'Me:', clientUserId, 'NewIsDrawer:', newIsDrawer, 'CurrentIsDrawer:', isDrawer);
+
+            // Protect against isDrawer flipping to false mid-turn due to race conditions
+            if (isDrawer && !newIsDrawer && (gamePhase === 'wordSelection' || gamePhase === 'drawing')) {
+              console.warn('[RoomUpdate] Ignoring isDrawer=false update because I am currently the drawer in active phase');
+            } else {
+              setIsDrawer(newIsDrawer);
+            }
+
+            if (room.currentRound.word && room.currentRound.word !== currentWord) {
+              // Only update word if we're not the drawer (drawer has their own word set via wordSelected)
+              if (!newIsDrawer) {
+                setCurrentWord(room.currentRound.word);
+              }
+            }
           }
           break;
         }
