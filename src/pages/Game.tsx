@@ -153,11 +153,19 @@ const Game = () => {
             roomId: roomId!,
             userId: data.userId,
             username: data.username,
-            text: `✓ ${data.username} guessed correctly!`,
+            text: `✓ ${data.username} guessed correctly! +${data.pointsAwarded} pts ${data.position ? `(#${data.position}/${data.totalPlayers})` : ''}`,
             createdAt: new Date().toISOString(),
             isCorrect: true
           };
           setMessages((prev) => [...prev, msg]);
+
+          // Show toast with score breakdown
+          if (data.userId === sessionStorage.getItem('clientUserId')) {
+            toast.success(
+              `Correct! +${data.pointsAwarded} points`,
+              { description: data.position ? `You were #${data.position} to guess!` : '' }
+            );
+          }
 
           // Update scores in players list
           setPlayers((prev) => prev.map(p => {

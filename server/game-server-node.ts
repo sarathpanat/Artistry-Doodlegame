@@ -30,6 +30,7 @@ interface Player {
   connected: boolean;
   socketId?: string;
   hasGuessed?: boolean; // Track if player has guessed correctly in current round
+  guessTime?: number; // Timestamp when player guessed correctly
 }
 
 interface Room {
@@ -49,6 +50,60 @@ interface Room {
 const rooms = new Map<string, Room>();
 const sessions = new Map<string, { userId: string; username: string; roomId: string; socketId?: string }>();
 const sockets = new Map<string, any>();
+
+// Timer management to prevent race conditions
+interface RoomTimers {
+  wordSelectionTimer?: NodeJS.Timeout;
+  drawingTimer?: NodeJS.Timeout;
+  roundEndTimer?: NodeJS.Timeout;
+}
+const roomTimers = new Map<string, RoomTimers>();
+
+function clearAllTimers(roomId: string) {
+  const timers = roomTimers.get(roomId);
+  if (timers) {
+    if (timers.wordSelectionTimer) clearTimeout(timers.wordSelectionTimer);
+    if (timers.drawingTimer) clearTimeout(timers.drawingTimer);
+    if (timers.roundEndTimer) clearTimeout(timers.roundEndTimer);
+  }
+  roomTimers.delete(roomId);
+}
+
+// Scoring functions
+function calculateGuesserScore(
+  guessTimestamp: number,
+  drawingStartTime: number,
+  maxTime: number,
+  position: number,
+  totalPlayers: number
+): number {
+  const basePoints = 100;
+  const timeElapsed = (guessTimestamp - drawingStartTime) / 1000;
+  const timeBonus = Math.max(0, Math.round(100 - (timeElapsed / maxTime * 100)));
+  const positionBonus = (totalPlayers - position + 1) * 10;
+
+  return basePoints + timeBonus + positionBonus;
+}
+
+function calculateArtistScore(
+  correctGuesses: number,
+  drawingStartTime: number,
+  firstGuessTime?: number
+): number {
+  const basePoints = 50;
+  const guessBonus = correctGuesses * 25;
+
+  // Speed bonus if first guess was in first 25 seconds
+  let speedBonus = 0;
+  if (firstGuessTime && drawingStartTime) {
+    const timeToFirstGuess = (firstGuessTime - drawingStartTime) / 1000;
+    if (timeToFirstGuess < 25) {
+      speedBonus = 50;
+    }
+  }
+
+  return basePoints + guessBonus + speedBonus;
+}
 
 const DEFAULT_LAT = 11.2488;
 const DEFAULT_LON = 75.7839;
@@ -350,55 +405,97 @@ function startDrawingPhase(roomId: string) {
   const room = rooms.get(roomId);
   if (!room || !room.currentRound || !room.currentRound.word) return;
 
+  // Clear word selection timer
+  const timers = roomTimers.get(roomId) || {};
+  if (timers.wordSelectionTimer) {
+    clearTimeout(timers.wordSelectionTimer);
+    timers.wordSelectionTimer = undefined;
+  }
+
   const timerEndsAt = new Date(Date.now() + 50000).toISOString(); // 50 seconds
   room.currentRound.timerEndsAt = timerEndsAt;
+  room.currentRound.drawingStartTime = Date.now(); // Track start time for scoring
 
   // Reset hasGuessed flags for all players
-  room.players.forEach(p => p.hasGuessed = false);
+  room.players.forEach(p => {
+    p.hasGuessed = false;
+    p.guessTime = undefined;
+  });
 
   // Send word only to drawer
   const drawer = room.players.find(p => p.userId === room.currentRound.drawerUserId);
   if (drawer && drawer.socketId) {
     const socket = sockets.get(drawer.socketId);
-    if (socket && socket.readyState === 1) {
+    if (socket) {
       socket.send(JSON.stringify({
         type: 'wordSelected',
         word: room.currentRound.word,
-        drawerUserId: room.currentRound.drawerUserId
+        timeLimit: 50,
+        timerEndsAt: timerEndsAt
       }));
     }
   }
 
-  // Broadcast to watchers (without word)
-  room.players.forEach((player) => {
-    if (player.userId !== room.currentRound.drawerUserId && player.socketId) {
-      const socket = sockets.get(player.socketId);
-      if (socket && socket.readyState === 1) {
+  // Notify other players (without the word)
+  room.players.forEach(p => {
+    if (p.userId !== room.currentRound.drawerUserId && p.socketId) {
+      const socket = sockets.get(p.socketId);
+      if (socket) {
         socket.send(JSON.stringify({
           type: 'wordSelected',
-          drawerUserId: room.currentRound.drawerUserId
+          word: '_'.repeat(room.currentRound.word.length),
+          timeLimit: 50,
+          timerEndsAt: timerEndsAt
         }));
       }
     }
   });
 
-  console.log(`Drawing phase started in room ${roomId}, word: ${room.currentRound.word}`);
+  console.log(`Drawing phase started for word: ${room.currentRound.word}`);
 
-  // Set timeout for drawing phase (30 seconds)
-  setTimeout(() => {
+  // End drawing phase after 50 seconds
+  timers.drawingTimer = setTimeout(() => {
     const currentRoom = rooms.get(roomId);
     if (!currentRoom || !currentRoom.currentRound) return;
 
-    console.log(`Drawing timeout in room ${roomId}`);
+    // Calculate and award artist score
+    const correctGuesses = currentRoom.players.filter(p =>
+      p.userId !== currentRoom.currentRound.drawerUserId && p.hasGuessed
+    ).length;
+
+    const firstGuessTime = currentRoom.players
+      .filter(p => p.guessTime)
+      .sort((a, b) => (a.guessTime || 0) - (b.guessTime || 0))[0]?.guessTime;
+
+    const artistScore = calculateArtistScore(
+      correctGuesses,
+      currentRoom.currentRound.drawingStartTime || Date.now(),
+      firstGuessTime
+    );
+
+    const artist = currentRoom.players.find(p => p.userId === currentRoom.currentRound.drawerUserId);
+    if (artist) {
+      artist.score += artistScore;
+      console.log(`Artist ${artist.username} earned ${artistScore} points (${correctGuesses} correct guesses)`);
+    }
+
     broadcastToRoom(roomId, {
-      type: 'drawingTimeout',
-      word: currentRoom.currentRound.word
+      type: 'roundEnd',
+      word: currentRoom.currentRound.word,
+      scores: currentRoom.players.map(p => ({
+        userId: p.userId,
+        username: p.username,
+        score: p.score
+      }))
     });
 
-    setTimeout(() => {
-      moveToNextGame(roomId);
-    }, 2000);
-  }, 50000); // 30 seconds
+    // Move to next round after showing scores
+    timers.roundEndTimer = setTimeout(() => {
+      startNewRound(roomId);
+    }, 5000);
+    roomTimers.set(roomId, timers);
+  }, 50000);
+  roomTimers.set(roomId, timers);
 }
 
 /**
@@ -794,24 +891,44 @@ wss.on('connection', (ws) => {
           const word = room.currentRound.word.toLowerCase();
           const player = room.players.find(p => p.userId === currentSession!.userId);
 
-          // Check if user is not the drawer
-          if (player && currentSession.userId !== room.currentRound.drawerUserId) {
+          // Check if user is not the drawer and hasn't guessed yet
+          if (player && currentSession.userId !== room.currentRound.drawerUserId && !player.hasGuessed) {
             if (guess === word) {
-              // Correct guess!
-              player.score += 10;
-              player.hasGuessed = true; // Mark player as having guessed correctly
+              // Correct guess! Calculate competitive score
+              const guessTimestamp = Date.now();
+              const drawingStartTime = room.currentRound.drawingStartTime || guessTimestamp;
 
-              const drawer = room.players.find(p => p.userId === room.currentRound?.drawerUserId);
-              if (drawer) {
-                drawer.score += 5; // Artist gets 5 points
-              }
+              // Calculate position (how many have guessed before this player)
+              const position = room.players.filter(p =>
+                p.userId !== room.currentRound.drawerUserId && p.hasGuessed
+              ).length + 1;
+
+              const totalPlayers = room.players.filter(p =>
+                p.userId !== room.currentRound.drawerUserId && p.connected
+              ).length;
+
+              const score = calculateGuesserScore(
+                guessTimestamp,
+                drawingStartTime,
+                50, // 50 seconds max time
+                position,
+                totalPlayers
+              );
+
+              player.score += score;
+              player.hasGuessed = true;
+              player.guessTime = guessTimestamp;
+
+              console.log(`${currentSession.username} guessed correctly: ${word} (+${score} points, position ${position}/${totalPlayers})`);
 
               // Don't reveal the word in the message - just say they guessed correctly
               broadcastToRoom(currentSession.roomId, {
                 type: 'correctGuess',
                 userId: currentSession.userId,
                 username: currentSession.username,
-                pointsAwarded: 10,
+                pointsAwarded: score,
+                position: position,
+                totalPlayers: totalPlayers,
                 drawerUserId: room.currentRound.drawerUserId
               });
 
@@ -820,8 +937,6 @@ wss.on('connection', (ws) => {
                 room
               });
 
-              console.log(`${currentSession.username} guessed correctly: ${word}`);
-
               // Check if all non-drawer players have guessed correctly
               const nonDrawerPlayers = room.players.filter(p =>
                 p.userId !== room.currentRound?.drawerUserId && p.connected
@@ -829,12 +944,52 @@ wss.on('connection', (ws) => {
               const allGuessed = nonDrawerPlayers.every(p => p.hasGuessed);
 
               if (allGuessed) {
-                // All players guessed! Move to next game immediately
-                console.log('All players guessed correctly! Moving to next game...');
-                setTimeout(() => moveToNextGame(currentSession!.roomId), 1000);
-              } else {
-                // Some players haven't guessed yet, wait for timeout
-                // Don't auto-advance
+                // All players guessed! Clear drawing timer and move to next round
+                console.log('All players guessed correctly! Ending round early...');
+                const timers = roomTimers.get(currentSession.roomId);
+                if (timers?.drawingTimer) {
+                  clearTimeout(timers.drawingTimer);
+                  timers.drawingTimer = undefined;
+                }
+
+                // Calculate and award artist score
+                const correctGuesses = room.players.filter(p =>
+                  p.userId !== room.currentRound.drawerUserId && p.hasGuessed
+                ).length;
+
+                const firstGuessTime = room.players
+                  .filter(p => p.guessTime)
+                  .sort((a, b) => (a.guessTime || 0) - (b.guessTime || 0))[0]?.guessTime;
+
+                const artistScore = calculateArtistScore(
+                  correctGuesses,
+                  room.currentRound.drawingStartTime || Date.now(),
+                  firstGuessTime
+                );
+
+                const artist = room.players.find(p => p.userId === room.currentRound.drawerUserId);
+                if (artist) {
+                  artist.score += artistScore;
+                  console.log(`Artist ${artist.username} earned ${artistScore} points (all guessed quickly!)`);
+                }
+
+                // Broadcast round end
+                broadcastToRoom(currentSession.roomId, {
+                  type: 'roundEnd',
+                  word: room.currentRound.word,
+                  scores: room.players.map(p => ({
+                    userId: p.userId,
+                    username: p.username,
+                    score: p.score
+                  }))
+                });
+
+                // Move to next round after showing scores
+                const roundTimers = roomTimers.get(currentSession.roomId) || {};
+                roundTimers.roundEndTimer = setTimeout(() => {
+                  startNewRound(currentSession!.roomId);
+                }, 5000);
+                roomTimers.set(currentSession.roomId, roundTimers);
               }
             } else {
               // Wrong guess, broadcast as chat
