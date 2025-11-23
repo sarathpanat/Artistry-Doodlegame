@@ -29,14 +29,14 @@ export class GameWebSocket {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
   private status: 'connecting' | 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
-  
+
   constructor(
     private sessionToken: string,
     private roomId: string,
     private onMessage: (data: any) => void,
     private onError: (error: string) => void,
     private onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'reconnecting') => void
-  ) {}
+  ) { }
 
   connect() {
     const basePath = normalizePath(GAME_WS_BASE);
@@ -50,7 +50,7 @@ export class GameWebSocket {
       this.reconnectAttempts = 0;
       // mark connected immediately
       this.setStatus('connected');
-      
+
       // Join room
       this.send({
         type: "joinRoom",
@@ -126,16 +126,30 @@ export class GameWebSocket {
     });
   }
 
-  sendDrawingEvent(event: DrawingEvent) {
+  selectWord(word: string) {
     this.send({
-      type: "drawingEvent",
+      type: 'selectWord',
+      word
+    });
+  }
+
+  sendDrawingEvent(event: any) {
+    this.send({
+      type: 'drawingEvent',
       event
     });
   }
 
   sendGuess(text: string) {
     this.send({
-      type: "guess",
+      type: 'guess',
+      text
+    });
+  }
+
+  sendChatMessage(text: string) {
+    this.send({
+      type: 'chatMessage',
       text
     });
   }

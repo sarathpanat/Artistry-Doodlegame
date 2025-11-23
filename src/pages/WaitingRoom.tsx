@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Check, Crown, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft, Check, Crown, X, Send, MessageCircle, Trophy } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,10 +34,28 @@ const WaitingRoom = () => {
   const [category, setCategory] = useState("Malayalam Movies");
   const [roomName, setRoomName] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; username: string; text: string; timestamp: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const navigatingToGameRef = useRef(false);
+  const [lastGameScores, setLastGameScores] = useState<Array<{ userId: string; username: string; score: number }> | null>(null);
 
   const clientUserId = typeof window !== 'undefined' ? sessionStorage.getItem('clientUserId') : null;
   const username = typeof window !== 'undefined' ? sessionStorage.getItem('username') || 'Guest' : 'Guest';
   const [serverRoomLoaded, setServerRoomLoaded] = useState(false);
+
+  // Load last game scores on mount
+  useEffect(() => {
+    const scoresStr = sessionStorage.getItem('lastGameScores');
+    if (scoresStr) {
+      try {
+        const scores = JSON.parse(scoresStr);
+        setLastGameScores(scores);
+      } catch (e) {
+        console.error('Failed to parse last game scores', e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!roomId) return;
@@ -70,8 +90,9 @@ const WaitingRoom = () => {
                   setIsAdmin(Boolean(room.creatorUserId === clientUserId || (room.players || []).some((p: Player) => p.isAdmin && p.userId === clientUserId)));
                   const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
                   setIsReady(Boolean(me?.ready));
-                  // if the room was marked inactive or a round exists, navigate to game
-                  if (room && (room.active === false || room.currentRound)) {
+                  // if the room was marked inactive or a game object exists, navigate to game
+                  if (room && (room.active === false || room.game)) {
+                    navigatingToGameRef.current = true;
                     navigate(`/game/${roomId}`);
                     return;
                   }
@@ -93,7 +114,17 @@ const WaitingRoom = () => {
                 }
                 case 'roundStart': {
                   // room is starting — navigate to game
+                  navigatingToGameRef.current = true;
                   navigate(`/game/${roomId}`);
+                  break;
+                }
+                case 'chatMessage': {
+                  setChatMessages((prev) => [...prev, {
+                    id: `${data.userId}-${Date.now()}`,
+                    username: data.username,
+                    text: data.text,
+                    timestamp: data.timestamp || new Date().toISOString()
+                  }]);
                   break;
                 }
                 case 'error': {
@@ -134,11 +165,17 @@ const WaitingRoom = () => {
 
     return () => {
       if (wsRef.current) {
-        try { wsRef.current.leaveRoom(); } catch (e) {}
-        try { wsRef.current.disconnect(); } catch (e) {}
-        wsRef.current = null;
+        // Don't call leaveRoom if we're navigating to the game
+        if (!navigatingToGameRef.current) {
+          try { wsRef.current.leaveRoom(); } catch (e) { }
+          try { wsRef.current.disconnect(); } catch (e) { }
+        }
+        // Don't set wsRef to null if navigating to game - Game.tsx will reuse it
+        if (!navigatingToGameRef.current) {
+          wsRef.current = null;
+        }
       }
-      try { if (bcRef.current) { bcRef.current.close(); bcRef.current = null; } } catch (e) {}
+      try { if (bcRef.current) { bcRef.current.close(); bcRef.current = null; } } catch (e) { }
     };
   }, [roomId]);
 
@@ -165,7 +202,7 @@ const WaitingRoom = () => {
       // BroadcastChannel not available
     }
 
-    return () => { try { if (bcRef.current) { bcRef.current.close(); bcRef.current = null; } } catch (e) {} };
+    return () => { try { if (bcRef.current) { bcRef.current.close(); bcRef.current = null; } } catch (e) { } };
   }, [roomId]);
 
   const handleReadyToggle = () => {
@@ -190,7 +227,7 @@ const WaitingRoom = () => {
             const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
             setIsReady(Boolean(me?.ready));
           }
-        } catch (e) {}
+        } catch (e) { }
       })();
     } else {
       const local = JSON.parse(localStorage.getItem('localRooms') || '[]');
@@ -199,7 +236,7 @@ const WaitingRoom = () => {
         local[idx].players = local[idx].players || [];
         local[idx].players = local[idx].players.map((p: any) => p.userId === clientUserId || p.username === username ? { ...p, ready: newReady } : p);
         localStorage.setItem('localRooms', JSON.stringify(local));
-        try { bcRef.current?.postMessage({ type: 'localRoomsUpdated', rooms: local }); } catch (e) {}
+        try { bcRef.current?.postMessage({ type: 'localRoomsUpdated', rooms: local }); } catch (e) { }
       }
     }
 
@@ -209,32 +246,16 @@ const WaitingRoom = () => {
   const handleStartGame = () => {
     if (!isAdmin) { toast.error("Only the host can start the game"); return; }
     const allReady = players.filter(p => !p.isAdmin).every(p => p.ready);
-    if (!allReady) {
-      const doForce = window.confirm('Not all players are ready. Force start the game?');
-      if (!doForce) { toast.error('Start cancelled'); return; }
-      if (wsRef.current) { wsRef.current.startGame(true); toast.success('Force starting game...'); } else { toast.success('Starting game (offline)...'); navigate(`/game/${roomId}`); return; }
-    } else {
-      if (wsRef.current) { wsRef.current.startGame(false); toast.success('Starting game...'); } else { toast.success('Starting game (offline)...'); navigate(`/game/${roomId}`); return; }
-    }
+    const forceStart = !allReady && window.confirm('Not all players are ready. Force start the game?');
+    if (!allReady && !forceStart) { toast.error('Start cancelled'); return; }
 
-    (async () => {
-      const base = (import.meta.env.VITE_GAME_SERVER_URL || '').replace(/\/$/, '');
-      const basePath = (import.meta.env.VITE_GAME_WS_BASE || '').replace(/\/$/, '');
-      const url = `${base}${basePath}/room?roomId=${roomId}`;
-      const start = Date.now();
-      const timeout = 5000;
-      while (Date.now() - start < timeout) {
-        try {
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const room = await resp.json();
-            if (room && (room.active === false || room.currentRound)) { navigate(`/game/${roomId}`); return; }
-          }
-        } catch (e) {}
-        await new Promise(r => setTimeout(r, 500));
-      }
-      toast.error('Server did not confirm start.');
-    })();
+    if (wsRef.current) {
+      wsRef.current.startGame(forceStart);
+      toast.success(forceStart ? 'Force starting game...' : 'Starting game...');
+    } else {
+      toast.success('Starting game (offline)...');
+      navigate(`/game/${roomId}`);
+    }
   };
 
   useEffect(() => {
@@ -245,64 +266,156 @@ const WaitingRoom = () => {
 
   const handleLeave = () => { toast.info('Left the room'); navigate('/'); };
 
+  const handleSendChat = () => {
+    if (!chatInput.trim() || !wsRef.current) return;
+    wsRef.current.sendChatMessage(chatInput);
+    setChatInput("");
+  };
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
   return (
     <div className="min-h-screen bg-background p-4">
       <Button variant="ghost" onClick={() => setShowExitDialog(true)} className="mb-4">
         <ArrowLeft className="mr-2 h-4 w-4" /> Leave Room
       </Button>
 
-      <div className="max-w-4xl mx-auto space-y-6">
-        <Card className="shadow-game gradient-card border-2 border-primary/20">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-3xl text-primary">Waiting Room</CardTitle>
-                <p className="text-muted-foreground mt-1">Room: <span className="font-mono text-foreground">{roomName || roomId}</span></p>
+      <div className="max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-[1fr_400px] gap-6">
+          {/* Players Section */}
+          <Card className="shadow-game gradient-card border-2 border-primary/20">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-3xl text-primary">Waiting Room</CardTitle>
+                  <p className="text-muted-foreground mt-1">Room: <span className="font-mono text-foreground">{roomName || roomId}</span></p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-secondary text-secondary-foreground text-lg px-4 py-2">{category}</Badge>
+                  <span className="text-sm font-mono text-muted-foreground">{wsStatus}</span>
+                </div>
               </div>
-              <Badge className="bg-secondary text-secondary-foreground text-lg px-4 py-2">{category}</Badge>
-              <div className="ml-4"><span className="text-sm font-mono">{wsStatus}</span></div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <h3 className="font-semibold text-xl">Players ({players.length}/10)</h3>
-              <div className="grid gap-3">
-                {players.map((player) => (
-                  <div key={player.userId} className="flex items-center justify-between p-4 rounded-lg bg-card border-2 border-border transition-smooth">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary text-primary-foreground font-semibold">{player.username.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{player.username}</span>
-                          {player.isAdmin && (<Crown className="h-4 w-4 text-secondary" />)}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <h3 className="font-semibold text-xl">Players ({players.length}/10)</h3>
+                <div className="grid gap-3">
+                  {players.map((player) => (
+                    <div key={player.userId} className="flex items-center justify-between p-4 rounded-lg bg-card border-2 border-border transition-smooth">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary text-primary-foreground font-semibold">{player.username.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{player.username}</span>
+                            {player.isAdmin && (<Crown className="h-4 w-4 text-secondary" />)}
+                          </div>
                         </div>
                       </div>
+                      <div>
+                        {player.isAdmin ? (
+                          <Badge variant="outline">Host</Badge>
+                        ) : player.ready ? (
+                          <Badge className="bg-primary text-primary-foreground"><Check className="mr-1 h-3 w-3" />Ready</Badge>
+                        ) : (
+                          <Badge variant="secondary"><X className="mr-1 h-3 w-3" />Not Ready</Badge>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      {player.isAdmin ? (
-                        <Badge variant="outline">Host</Badge>
-                      ) : player.ready ? (
-                        <Badge className="bg-primary text-primary-foreground"><Check className="mr-1 h-3 w-3" />Ready</Badge>
-                      ) : (
-                        <Badge variant="secondary"><X className="mr-1 h-3 w-3" />Not Ready</Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="flex gap-3">
-              {players.some(p => p.isAdmin && p.userId === clientUserId) || isAdmin ? (
-                <Button onClick={handleStartGame} className="flex-1 bg-primary text-primary-foreground hover:bg-primary-glow transition-bounce text-lg py-6" size="lg">Start Game</Button>
-              ) : (
-                <Button onClick={handleReadyToggle} variant={isReady ? 'secondary' : 'default'} className="flex-1 transition-bounce text-lg py-6" size="lg">
-                  {isReady ? (<><Check className="mr-2 h-5 w-5" />Ready</>) : ('Mark as Ready')}
-                </Button>
+              {/* Last Game Scores */}
+              {lastGameScores && lastGameScores.length > 0 && (
+                <div className="space-y-3 pt-4 border-t">
+                  <h3 className="font-semibold text-xl flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    Last Game Results
+                  </h3>
+                  <div className="space-y-2">
+                    {lastGameScores.map((player, index) => (
+                      <div key={player.userId} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                        <div className="flex items-center gap-3">
+                          {index === 0 && <Trophy className="h-5 w-5 text-yellow-500" />}
+                          {index === 1 && <Trophy className="h-5 w-5 text-gray-400" />}
+                          {index === 2 && <Trophy className="h-5 w-5 text-amber-600" />}
+                          {index > 2 && <span className="w-5 text-center text-muted-foreground">#{index + 1}</span>}
+                          <span className="font-semibold">{player.username}</span>
+                        </div>
+                        <Badge variant="outline" className="text-lg font-bold">
+                          {player.score} pts
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setLastGameScores(null);
+                      sessionStorage.removeItem('lastGameScores');
+                    }}
+                    className="w-full"
+                  >
+                    Clear Scores
+                  </Button>
+                </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
+
+              <div className="flex gap-3">
+                {players.some(p => p.isAdmin && p.userId === clientUserId) || isAdmin ? (
+                  <Button onClick={handleStartGame} className="flex-1 bg-primary text-primary-foreground hover:bg-primary-glow transition-bounce text-lg py-6" size="lg">Start Game</Button>
+                ) : (
+                  <Button onClick={handleReadyToggle} variant={isReady ? 'secondary' : 'default'} className="flex-1 transition-bounce text-lg py-6" size="lg">
+                    {isReady ? (<><Check className="mr-2 h-5 w-5" />Ready</>) : ('Mark as Ready')}
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Chat Section */}
+          <Card className="shadow-game border-2 border-primary/20 h-fit lg:sticky lg:top-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                Room Chat
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ScrollArea className="h-[400px] rounded-lg border p-4" ref={chatScrollRef}>
+                <div className="space-y-3">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-center text-muted-foreground text-sm py-8">No messages yet. Start chatting!</p>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div key={msg.id} className="p-2 rounded-lg bg-muted">
+                        <span className="font-semibold text-sm">{msg.username}:</span>
+                        <span className="ml-2 text-sm">{msg.text}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Type a message..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                />
+                <Button onClick={handleSendChat} size="icon">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <AlertDialog open={showExitDialog} onOpenChange={setShowExitDialog}>
