@@ -59,6 +59,67 @@ const WaitingRoom = () => {
 
   useEffect(() => {
     if (!roomId) return;
+
+    // Define message handler outside of loadRoom so it persists
+    const handleMessage = (data: any) => {
+      // any incoming message indicates websocket is alive
+      setWsStatus('connected');
+      switch (data.type) {
+        case 'roomUpdate': {
+          const room = data.room;
+          setPlayers(room.players || []);
+          setCategory(room.category || 'Malayalam Movies');
+          setRoomName(room.displayCode || room.roomId || null);
+          setIsAdmin(Boolean(room.creatorUserId === clientUserId || (room.players || []).some((p: Player) => p.isAdmin && p.userId === clientUserId)));
+          const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
+          setIsReady(Boolean(me?.ready));
+          break;
+        }
+        case 'playerReady': {
+          const { userId, ready } = data;
+          setPlayers((prev) => prev.map(p => p.userId === userId ? { ...p, ready } : p));
+          break;
+        }
+        case 'playerJoined': {
+          const player: Player = data.player;
+          setPlayers((prev) => {
+            if (prev.some(p => p.userId === player.userId)) return prev;
+            return [...prev, player];
+          });
+          toast.success(`${player.username} joined`);
+          break;
+        }
+        case 'playerLeft': {
+          const userId: string = data.userId;
+          setPlayers((prev) => prev.filter(p => p.userId !== userId));
+          break;
+        }
+        case 'roundStart': {
+          // room is starting — navigate to game
+          navigatingToGameRef.current = true;
+          navigate(`/game/${roomId}`);
+          break;
+        }
+        case 'chatMessage': {
+          setChatMessages((prev) => [...prev, {
+            id: `${data.userId}-${Date.now()}`,
+            username: data.username,
+            text: data.text,
+            timestamp: data.timestamp || new Date().toISOString()
+          }]);
+          break;
+        }
+        case 'error': {
+          toast.error(data.message || 'Server error');
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    const handleError = (err: string) => { console.warn('WebSocket error', err); };
+
     async function loadRoom() {
       try {
         const base = (import.meta.env.VITE_GAME_SERVER_URL || '').replace(/\/$/, '');
@@ -74,72 +135,21 @@ const WaitingRoom = () => {
         const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
         setIsReady(Boolean(me?.ready));
         setServerRoomLoaded(true);
-        // Connect websocket for authoritative server rooms
+
+        // Connect or re-register websocket handlers
         const sessionToken = sessionStorage.getItem('sessionToken');
         if (sessionToken) {
           try {
-            const handleMessage = (data: any) => {
-              // any incoming message indicates websocket is alive
-              setWsStatus('connected');
-              switch (data.type) {
-                case 'roomUpdate': {
-                  const room = data.room;
-                  setPlayers(room.players || []);
-                  setCategory(room.category || 'Malayalam Movies');
-                  setRoomName(room.displayCode || room.roomId || null);
-                  setIsAdmin(Boolean(room.creatorUserId === clientUserId || (room.players || []).some((p: Player) => p.isAdmin && p.userId === clientUserId)));
-                  const me = (room.players || []).find((p: Player) => p.userId === clientUserId || p.username === username);
-                  setIsReady(Boolean(me?.ready));
-                  // if the room was marked inactive or a game object exists, navigate to game
-                  if (room && (room.active === false || room.game)) {
-                    navigatingToGameRef.current = true;
-                    navigate(`/game/${roomId}`);
-                    return;
-                  }
-                  break;
-                }
-                case 'playerJoined': {
-                  const player: Player = data.player;
-                  setPlayers((prev) => {
-                    if (prev.some(p => p.userId === player.userId)) return prev;
-                    return [...prev, player];
-                  });
-                  toast.success(`${player.username} joined`);
-                  break;
-                }
-                case 'playerLeft': {
-                  const userId: string = data.userId;
-                  setPlayers((prev) => prev.filter(p => p.userId !== userId));
-                  break;
-                }
-                case 'roundStart': {
-                  // room is starting — navigate to game
-                  navigatingToGameRef.current = true;
-                  navigate(`/game/${roomId}`);
-                  break;
-                }
-                case 'chatMessage': {
-                  setChatMessages((prev) => [...prev, {
-                    id: `${data.userId}-${Date.now()}`,
-                    username: data.username,
-                    text: data.text,
-                    timestamp: data.timestamp || new Date().toISOString()
-                  }]);
-                  break;
-                }
-                case 'error': {
-                  toast.error(data.message || 'Server error');
-                  break;
-                }
-                default:
-                  break;
-              }
-            };
-
-            const handleError = (err: string) => { console.warn('WebSocket error', err); };
-
-            wsRef.current = new GameWebSocket(sessionToken, roomId!, handleMessage, handleError, (s) => setWsStatus(s));
-            wsRef.current.connect();
+            // If WebSocket already exists (returning from game), just update the message handler
+            if (wsRef.current) {
+              console.log('Re-registering WebSocket message handler for waiting room');
+              wsRef.current.updateHandlers(handleMessage, handleError);
+            } else {
+              // Create new WebSocket connection
+              console.log('Creating new WebSocket connection for waiting room');
+              wsRef.current = new GameWebSocket(sessionToken, roomId!, handleMessage, handleError, (s) => setWsStatus(s));
+              wsRef.current.connect();
+            }
           } catch (e) {
             console.warn('Failed to connect WebSocket after server load', e);
           }

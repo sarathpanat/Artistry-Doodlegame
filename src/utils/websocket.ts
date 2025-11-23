@@ -104,6 +104,16 @@ export class GameWebSocket {
     }
   }
 
+  // Public method to update message handlers (useful when returning to waiting room from game)
+  updateHandlers(
+    onMessage: (data: any) => void,
+    onError: (error: string) => void
+  ) {
+    this.onMessage = onMessage;
+    this.onError = onError;
+    console.log('WebSocket handlers updated');
+  }
+
   send(data: any) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
