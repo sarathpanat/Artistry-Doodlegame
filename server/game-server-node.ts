@@ -93,11 +93,11 @@ function calculateArtistScore(
   const basePoints = 50;
   const guessBonus = correctGuesses * 25;
 
-  // Speed bonus if first guess was in first 25 seconds
+  // Speed bonus if first guess was in first 40 seconds (half of 80s)
   let speedBonus = 0;
   if (firstGuessTime && drawingStartTime) {
     const timeToFirstGuess = (firstGuessTime - drawingStartTime) / 1000;
-    if (timeToFirstGuess < 25) {
+    if (timeToFirstGuess < 40) {
       speedBonus = 50;
     }
   }
@@ -412,7 +412,7 @@ function startDrawingPhase(roomId: string) {
     timers.wordSelectionTimer = undefined;
   }
 
-  const timerEndsAt = new Date(Date.now() + 50000).toISOString(); // 50 seconds
+  const timerEndsAt = new Date(Date.now() + 80000).toISOString(); // 80 seconds
   room.currentRound.timerEndsAt = timerEndsAt;
   room.currentRound.drawingStartTime = Date.now(); // Track start time for scoring
 
@@ -430,7 +430,7 @@ function startDrawingPhase(roomId: string) {
       socket.send(JSON.stringify({
         type: 'wordSelected',
         word: room.currentRound.word,
-        timeLimit: 50,
+        timeLimit: 80,
         timerEndsAt: timerEndsAt
       }));
     }
@@ -444,7 +444,7 @@ function startDrawingPhase(roomId: string) {
         socket.send(JSON.stringify({
           type: 'wordSelected',
           word: '_'.repeat(room.currentRound.word.length),
-          timeLimit: 50,
+          timeLimit: 80,
           timerEndsAt: timerEndsAt
         }));
       }
@@ -453,7 +453,7 @@ function startDrawingPhase(roomId: string) {
 
   console.log(`Drawing phase started for word: ${room.currentRound.word}`);
 
-  // End drawing phase after 50 seconds
+  // End drawing phase after 80 seconds
   timers.drawingTimer = setTimeout(() => {
     const currentRoom = rooms.get(roomId);
     if (!currentRoom || !currentRoom.currentRound) return;
@@ -494,7 +494,7 @@ function startDrawingPhase(roomId: string) {
       startNewRound(roomId);
     }, 5000);
     roomTimers.set(roomId, timers);
-  }, 50000);
+  }, 80000);
   roomTimers.set(roomId, timers);
 }
 
@@ -910,7 +910,7 @@ wss.on('connection', (ws) => {
               const score = calculateGuesserScore(
                 guessTimestamp,
                 drawingStartTime,
-                50, // 50 seconds max time
+                80, // 80 seconds max time
                 position,
                 totalPlayers
               );
