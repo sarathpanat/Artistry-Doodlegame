@@ -89,9 +89,17 @@ const Game = () => {
         }
 
         case 'wordSelectionStart': {
-          console.log('Word selection started, isDrawer:', isDrawer, 'words:', data.words);
+          const clientId = sessionStorage.getItem('clientUserId');
+          const amIDrawer = data.words && data.words.length > 0; // Drawer gets words, watchers don't
+
+          console.log('[WordSelection] My clientId:', clientId);
+          console.log('[WordSelection] Words received:', data.words);
+          console.log('[WordSelection] Am I drawer?', amIDrawer);
+
+          setIsDrawer(amIDrawer);
           setGamePhase('wordSelection');
           setWordChoices(data.words || []);
+
           // Use server-provided timer end time for perfect sync
           if (data.timerEndsAt) {
             setTimerEndsAt(data.timerEndsAt);
@@ -106,12 +114,22 @@ const Game = () => {
         }
 
         case 'wordSelected': {
-          console.log('Received wordSelected event:', data);
+          console.log('[WordSelected] Received event:', data);
           const timeLimit = data.timeLimit || 80; // Use server's time limit
-          if (data.drawerUserId === clientUserId) {
+          const clientId = sessionStorage.getItem('clientUserId');
+
+          console.log('[WordSelected] My clientId:', clientId);
+          console.log('[WordSelected] Drawer userId:', data.drawerUserId);
+          console.log('[WordSelected] Word:', data.word);
+
+          if (data.drawerUserId === clientId) {
             setCurrentWord(data.word);
+            setIsDrawer(true); // Ensure isDrawer is set
+            console.log('[WordSelected] I am the artist! Word set to:', data.word);
             toast.success(`Your word: ${data.word}`);
           } else {
+            setIsDrawer(false);
+            console.log('[WordSelected] I am a watcher');
             toast.info('Artist has chosen a word!');
           }
           setGamePhase('drawing');
