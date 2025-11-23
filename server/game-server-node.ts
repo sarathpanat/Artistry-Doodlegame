@@ -551,6 +551,14 @@ function startNewRound(roomId: string) {
 
   console.log(`Round ${roundNumber}/${MAX_ROUNDS} started, drawer: ${drawer.username} (turn ${playerRoundNumber}/3)`);
 
+  // Broadcast round start to trigger navigation to game screen
+  broadcastToRoom(roomId, {
+    type: 'roundStart',
+    roundNumber: roundNumber,
+    totalRounds: MAX_ROUNDS,
+    drawerUserId: drawer.userId
+  });
+
   // Send words only to the drawer
   const drawerSocket = sockets.get(drawer.socketId || '');
   if (drawerSocket) {
